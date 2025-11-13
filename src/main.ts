@@ -1,17 +1,21 @@
 /**
- * Flat Earth Engine - Main Application
- * Entry point for the visualization system
+ * Flat Earth Engine - Main Application (Enhanced Version)
+ * Entry point with specialized renderers
  */
 
-import { WebGLContext, FPSCounter, generateCircleVertices, createBuffer, createVertexArray, UniformManager } from './rendering/webgl-utils';
+import { WebGLContext, FPSCounter, generateCircleVertices, createBuffer, createVertexArray } from './rendering/webgl-utils';
 import { Camera } from './rendering/camera';
 import { ShaderManager } from './rendering/shader-loader';
+import { EarthRenderer } from './rendering/earth-renderer';
+import { EMFieldRenderer } from './rendering/field-renderer';
+import { SolarRenderer } from './rendering/solar-renderer';
+import { GPSRenderer } from './rendering/gps-renderer';
 import { ExpansionEngine } from './core/expansion';
 import { EMFieldSolver } from './core/em-field';
 import { SolarSimulator } from './core/solar';
 import { ClimateModel } from './core/climate';
 import { GPSSimulator } from './core/gps';
-import { MODEL, COLORS } from './constants';
+import { MODEL } from './constants';
 import type { SimulationState, ViewMode } from './types';
 
 class FlatEarthEngine {
@@ -21,6 +25,12 @@ class FlatEarthEngine {
   private camera: Camera;
   private shaders: ShaderManager;
   private fpsCounter: FPSCounter;
+
+  // Specialized renderers
+  private earthRenderer: EarthRenderer | null = null;
+  private fieldRenderer: EMFieldRenderer | null = null;
+  private solarRenderer: SolarRenderer | null = null;
+  private gpsRenderer: GPSRenderer | null = null;
 
   // Simulation modules
   private expansion: ExpansionEngine;
@@ -38,12 +48,11 @@ class FlatEarthEngine {
     isPaused: false,
   };
 
-  // View mode
+  // View mode and options
   private viewMode: ViewMode = ViewMode.EARTH;
-
-  // Geometry buffers
-  private earthVAO: WebGLVertexArrayObject | null = null;
-  private earthIndexCount: number = 0;
+  private showStreamlines: boolean = false;
+  private showSunPath: boolean = false;
+  private showGPSVectors: boolean = false;
 
   // Animation
   private lastTime: number = 0;
@@ -57,71 +66,103 @@ class FlatEarthEngine {
   };
 
   constructor() {
-    // Get canvas
     this.canvas = document.getElementById('canvas') as HTMLCanvasElement;
     if (!this.canvas) {
       throw new Error('Canvas element not found');
     }
 
-    // Initialize WebGL
     this.webgl = new WebGLContext(this.canvas);
     this.gl = this.webgl.getContext();
 
-    // Initialize camera
     const aspect = this.canvas.width / this.canvas.height;
     this.camera = new Camera(aspect);
     this.camera.fitEarth(MODEL.geometry.ANTARCTIC_RIM_RADIUS);
 
-    // Initialize shader manager
     this.shaders = new ShaderManager(this.gl);
-
-    // Initialize FPS counter
     this.fpsCounter = new FPSCounter();
 
-    // Initialize simulation modules
     this.expansion = new ExpansionEngine(this.state.expansionRate);
     this.emField = new EMFieldSolver(MODEL.electromagnetic.VORTEX_STRENGTH_B0 * this.state.fieldStrength);
     this.solar = new SolarSimulator();
     this.climate = new ClimateModel();
     this.gps = new GPSSimulator(this.state.expansionRate);
 
-    // Get UI elements
     this.uiElements = {
       controls: document.getElementById('controls'),
       infoPanel: document.getElementById('infoPanel'),
       loading: document.getElementById('loading'),
     };
 
-    // Initialize
     this.init();
   }
 
   private async init(): Promise<void> {
-    console.log('Initializing Flat Earth Engine...');
+    console.log('🌍 Initializing Flat Earth Engine v2...');
 
     try {
-      // Load shaders
       this.shaders.loadAll();
 
-      // Setup geometry
-      this.setupGeometry();
+      // Initialize renderers with shared geometry
+      const earthGeom = generateCircleVertices(128, MODEL.geometry.ANTARCTIC_RIM_RADIUS);
+      const gl = this.gl;
+      const posBuffer = createBuffer(gl, earthGeom.positions);
+      const indexBuffer = createBuffer(gl, earthGeom.indices, gl.ELEMENT_ARRAY_BUFFER);
 
-      // Setup GPS stations
+      const earthProgram = this.shaders.getProgram('earth');
+      const earthVAO = createVertexArray(gl, earthProgram, [
+        { name: 'a_position', buffer: posBuffer, size: 2 }
+      ]);
+
+      gl.bindVertexArray(earthVAO);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+      gl.bindVertexArray(null);
+
+      // Create renderers
+      this.earthRenderer = new EarthRenderer(gl, earthProgram);
+      console.log('✓ Earth renderer initialized');
+
+      this.fieldRenderer = new EMFieldRenderer(
+        gl,
+        this.shaders.getProgram('field'),
+        this.shaders.getProgram('line'),
+        earthVAO!,
+        earthGeom.indices.length
+      );
+      console.log('✓ EM Field renderer initialized');
+
+      this.solarRenderer = new SolarRenderer(
+        gl,
+        this.shaders.getProgram('solar'),
+        this.shaders.getProgram('line'),
+        earthVAO!,
+        earthGeom.indices.length
+      );
+      console.log('✓ Solar renderer initialized');
+
+      this.gpsRenderer = new GPSRenderer(
+        gl,
+        this.shaders.getProgram('line')
+      );
+      console.log('✓ GPS renderer initialized');
+
+      // Setup data
       this.gps.generateStations(1000);
       console.log('✓ Generated 1000 GPS stations');
 
-      // Setup UI
-      this.setupUI();
+      // Generate EM streamlines
+      this.fieldRenderer.generateStreamlines(this.emField, 24);
+      console.log('✓ Generated EM field streamlines');
 
-      // Setup event listeners
+      // Generate sun path
+      this.solarRenderer.updateSunPath(this.solar, 0);
+      console.log('✓ Generated sun path');
+
+      this.setupUI();
       this.setupEventListeners();
 
-      // Hide loading screen
       if (this.uiElements.loading) {
         this.uiElements.loading.classList.add('hidden');
       }
-
-      // Show controls and info panel
       if (this.uiElements.controls) {
         this.uiElements.controls.classList.remove('hidden');
       }
@@ -129,14 +170,13 @@ class FlatEarthEngine {
         this.uiElements.infoPanel.classList.remove('hidden');
       }
 
-      console.log('✓ Initialization complete');
+      console.log('✅ Initialization complete');
 
-      // Start animation loop
       this.lastTime = performance.now();
       this.animate();
 
     } catch (error) {
-      console.error('Initialization failed:', error);
+      console.error('❌ Initialization failed:', error);
       if (this.uiElements.loading) {
         const loadingEl = this.uiElements.loading as HTMLElement;
         loadingEl.innerHTML = `
@@ -147,32 +187,8 @@ class FlatEarthEngine {
     }
   }
 
-  private setupGeometry(): void {
-    const gl = this.gl;
-
-    // Create Earth disk geometry
-    const earthGeom = generateCircleVertices(128, MODEL.geometry.ANTARCTIC_RIM_RADIUS);
-
-    const posBuffer = createBuffer(gl, earthGeom.positions);
-    const indexBuffer = createBuffer(gl, earthGeom.indices, gl.ELEMENT_ARRAY_BUFFER);
-
-    const program = this.shaders.getProgram('earth');
-    this.earthVAO = createVertexArray(gl, program, [
-      { name: 'a_position', buffer: posBuffer, size: 2 }
-    ]);
-
-    this.earthIndexCount = earthGeom.indices.length;
-
-    // Store index buffer (needed for drawing)
-    gl.bindVertexArray(this.earthVAO);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    gl.bindVertexArray(null);
-
-    console.log('✓ Geometry setup complete');
-  }
-
   private setupUI(): void {
-    // Time scale control
+    // Time scale
     const timeScaleSlider = document.getElementById('timeScale') as HTMLInputElement;
     const timeScaleValue = document.getElementById('timeScaleValue');
     if (timeScaleSlider && timeScaleValue) {
@@ -182,44 +198,54 @@ class FlatEarthEngine {
           ? `${(this.state.timeScale / 1000).toFixed(0)}kx`
           : `${this.state.timeScale.toFixed(1)}x`;
       });
-      // Trigger initial update
       timeScaleSlider.dispatchEvent(new Event('input'));
     }
 
-    // Expansion rate control
+    // Expansion rate
     const expansionRateSlider = document.getElementById('expansionRate') as HTMLInputElement;
     const expansionRateValue = document.getElementById('expansionRateValue');
     if (expansionRateSlider && expansionRateValue) {
       expansionRateSlider.addEventListener('input', () => {
         this.state.expansionRate = parseFloat(expansionRateSlider.value);
-        this.expansion.setExpansionRate(this.state.expansionRate / 100); // Convert cm to m
+        this.expansion.setExpansionRate(this.state.expansionRate / 100);
         this.gps.setExpansionRate(this.state.expansionRate / 100);
         expansionRateValue.textContent = `${this.state.expansionRate.toFixed(1)} cm/yr`;
       });
     }
 
-    // Field strength control
+    // Field strength
     const fieldStrengthSlider = document.getElementById('fieldStrength') as HTMLInputElement;
     const fieldStrengthValue = document.getElementById('fieldStrengthValue');
     if (fieldStrengthSlider && fieldStrengthValue) {
       fieldStrengthSlider.addEventListener('input', () => {
         this.state.fieldStrength = parseFloat(fieldStrengthSlider.value);
         this.emField.setFieldStrength(MODEL.electromagnetic.VORTEX_STRENGTH_B0 * this.state.fieldStrength);
+
+        // Regenerate streamlines with new field strength
+        if (this.fieldRenderer) {
+          this.fieldRenderer.generateStreamlines(this.emField, 24);
+        }
+
         fieldStrengthValue.textContent = this.state.fieldStrength.toFixed(1);
       });
     }
 
-    // Simulation time control
+    // Simulation time
     const simTimeSlider = document.getElementById('simTime') as HTMLInputElement;
     const simTimeValue = document.getElementById('simTimeValue');
     if (simTimeSlider && simTimeValue) {
       simTimeSlider.addEventListener('input', () => {
         this.state.time = parseFloat(simTimeSlider.value);
         simTimeValue.textContent = `${this.state.time.toFixed(0)} years`;
+
+        // Update sun path when time changes significantly
+        if (this.solarRenderer) {
+          this.solarRenderer.updateSunPath(this.solar, this.state.time * 365.24);
+        }
       });
     }
 
-    // Play/Pause button
+    // Play/Pause
     const playPauseBtn = document.getElementById('playPause');
     if (playPauseBtn) {
       playPauseBtn.addEventListener('click', () => {
@@ -228,7 +254,7 @@ class FlatEarthEngine {
       });
     }
 
-    // Reset button
+    // Reset
     const resetBtn = document.getElementById('reset');
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
@@ -239,21 +265,23 @@ class FlatEarthEngine {
         this.gps.reset();
         this.camera.fitEarth(MODEL.geometry.ANTARCTIC_RIM_RADIUS);
 
-        // Reset UI controls
         if (timeScaleSlider) timeScaleSlider.value = '0';
         if (expansionRateSlider) expansionRateSlider.value = '3.3';
         if (fieldStrengthSlider) fieldStrengthSlider.value = '1.0';
         if (simTimeSlider) simTimeSlider.value = '0';
 
-        // Trigger updates
         if (timeScaleSlider) timeScaleSlider.dispatchEvent(new Event('input'));
         if (expansionRateSlider) expansionRateSlider.dispatchEvent(new Event('input'));
         if (fieldStrengthSlider) fieldStrengthSlider.dispatchEvent(new Event('input'));
         if (simTimeSlider) simTimeSlider.dispatchEvent(new Event('input'));
+
+        if (this.solarRenderer) {
+          this.solarRenderer.updateSunPath(this.solar, 0);
+        }
       });
     }
 
-    // Screenshot button
+    // Screenshot
     const screenshotBtn = document.getElementById('screenshot');
     if (screenshotBtn) {
       screenshotBtn.addEventListener('click', () => {
@@ -268,7 +296,13 @@ class FlatEarthEngine {
         viewTabs.forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         const view = tab.getAttribute('data-view') as ViewMode;
-        if (view) this.viewMode = view;
+        if (view) {
+          this.viewMode = view;
+          // Update toggles based on view
+          this.showStreamlines = view === ViewMode.EM_FIELD;
+          this.showSunPath = view === ViewMode.SOLAR;
+          this.showGPSVectors = view === ViewMode.GPS;
+        }
       });
     });
 
@@ -276,11 +310,9 @@ class FlatEarthEngine {
   }
 
   private setupEventListeners(): void {
-    // Handle window resize
     window.addEventListener('resize', () => this.handleResize());
-    this.handleResize(); // Initial resize
+    this.handleResize();
 
-    // Mouse controls for camera
     let isDragging = false;
     let lastMouseX = 0;
     let lastMouseY = 0;
@@ -310,7 +342,6 @@ class FlatEarthEngine {
       isDragging = false;
     });
 
-    // Mouse wheel for zoom
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
@@ -333,151 +364,86 @@ class FlatEarthEngine {
 
   private update(deltaTime: number): void {
     if (!this.state.isPaused) {
-      // Update simulation time (deltaTime is in seconds)
       const deltaYears = (deltaTime / 1000) * this.state.timeScale / (365.24 * 24 * 3600);
       this.state.time += deltaYears;
 
-      // Update GPS stations
       this.gps.updatePositions(deltaYears);
+
+      // Update GPS renderer every few frames
+      if (Math.random() < 0.1 && this.gpsRenderer) {
+        this.gpsRenderer.updateStations(this.gps);
+      }
     }
 
-    // Update FPS counter
     this.fpsCounter.update();
   }
 
   private render(): void {
-    const gl = this.gl;
-
-    // Clear
     this.webgl.clear();
 
-    // Get view-projection matrix
-    const vpMatrix = this.camera.getViewProjectionMatrix();
+    // Always render Earth base
+    if (this.earthRenderer) {
+      this.earthRenderer.render(this.camera, this.state.time, this.state.expansionRate);
+    }
 
-    // Render Earth disk
-    this.renderEarth(vpMatrix);
-
-    // Render overlays based on view mode
+    // Render view-specific overlays
     switch (this.viewMode) {
       case ViewMode.EM_FIELD:
-        this.renderEMField(vpMatrix);
+        if (this.fieldRenderer) {
+          this.fieldRenderer.renderOverlay(this.camera, this.emField.getFieldStrength());
+          if (this.showStreamlines) {
+            this.fieldRenderer.renderStreamlines(this.camera);
+          }
+        }
         break;
+
       case ViewMode.SOLAR:
-        this.renderSolar(vpMatrix);
+        if (this.solarRenderer) {
+          const timeInDays = this.state.time * 365.24;
+          const sunPos = this.solar.getSunPosition(timeInDays);
+          this.solarRenderer.renderIllumination(this.camera, sunPos);
+
+          if (this.showSunPath) {
+            this.solarRenderer.renderSunPath(this.camera);
+          }
+
+          // Always show sun marker
+          this.solarRenderer.renderSunMarker(this.camera, sunPos);
+        }
         break;
-      case ViewMode.CLIMATE:
-        this.renderClimate(vpMatrix);
-        break;
+
       case ViewMode.GPS:
-        this.renderGPS(vpMatrix);
+        if (this.gpsRenderer) {
+          this.gpsRenderer.renderStations(this.camera);
+          if (this.showGPSVectors) {
+            this.gpsRenderer.renderVectors(this.camera);
+          }
+        }
         break;
     }
 
-    // Update UI
     this.updateUI();
   }
 
-  private renderEarth(vpMatrix: Float32Array): void {
-    const gl = this.gl;
-    const program = this.shaders.getProgram('earth');
-
-    gl.useProgram(program);
-
-    const uniforms = new UniformManager(gl, program);
-    uniforms.setMat4('u_viewProjection', vpMatrix);
-    uniforms.setFloat('u_time', this.state.time);
-    uniforms.setFloat('u_expansionRate', this.state.expansionRate / 100);
-    uniforms.setFloat('u_maxRadius', MODEL.geometry.ANTARCTIC_RIM_RADIUS);
-    uniforms.setVec4('u_diskColor', ...COLORS.EARTH.DISK);
-    uniforms.setVec4('u_gridColor', ...COLORS.EARTH.GRID);
-    uniforms.setVec4('u_rimColor', ...COLORS.EARTH.RIM);
-    uniforms.setFloat('u_gridSpacing', 20);
-    uniforms.setInt('u_showGrid', 1);
-
-    gl.bindVertexArray(this.earthVAO);
-    gl.drawElements(gl.TRIANGLES, this.earthIndexCount, gl.UNSIGNED_SHORT, 0);
-    gl.bindVertexArray(null);
-  }
-
-  private renderEMField(vpMatrix: Float32Array): void {
-    const gl = this.gl;
-    const program = this.shaders.getProgram('field');
-
-    gl.useProgram(program);
-
-    // For now, render field as overlay using earth geometry
-    // TODO: Implement proper field line rendering
-    const uniforms = new UniformManager(gl, program);
-    uniforms.setMat4('u_viewProjection', vpMatrix);
-    uniforms.setFloat('u_fieldStrength', this.emField.getFieldStrength());
-    uniforms.setFloat('u_time', performance.now());
-    uniforms.setVec4('u_fieldColor', ...COLORS.EM_FIELD.MED);
-    uniforms.setFloat('u_maxRadius', MODEL.geometry.ANTARCTIC_RIM_RADIUS);
-
-    gl.bindVertexArray(this.earthVAO);
-    gl.drawElements(gl.TRIANGLES, this.earthIndexCount, gl.UNSIGNED_SHORT, 0);
-    gl.bindVertexArray(null);
-  }
-
-  private renderSolar(vpMatrix: Float32Array): void {
-    const gl = this.gl;
-    const program = this.shaders.getProgram('solar');
-
-    // Get sun position (convert simulation time in years to days)
-    const timeInDays = this.state.time * 365.24;
-    const sunPos = this.solar.getSunPosition(timeInDays);
-
-    gl.useProgram(program);
-
-    const uniforms = new UniformManager(gl, program);
-    uniforms.setMat4('u_viewProjection', vpMatrix);
-    uniforms.setVec3('u_sunPosition', sunPos.x, sunPos.y, sunPos.z);
-    uniforms.setFloat('u_illuminationAngle', MODEL.solar.ILLUMINATION_ANGLE);
-    uniforms.setVec4('u_dayColor', ...COLORS.SOLAR.DAY);
-    uniforms.setVec4('u_nightColor', ...COLORS.SOLAR.NIGHT);
-    uniforms.setFloat('u_maxRadius', MODEL.geometry.ANTARCTIC_RIM_RADIUS);
-
-    gl.bindVertexArray(this.earthVAO);
-    gl.drawElements(gl.TRIANGLES, this.earthIndexCount, gl.UNSIGNED_SHORT, 0);
-    gl.bindVertexArray(null);
-  }
-
-  private renderClimate(vpMatrix: Float32Array): void {
-    // TODO: Implement climate zone rendering
-    // For now, render Earth disk
-    this.renderEarth(vpMatrix);
-  }
-
-  private renderGPS(vpMatrix: Float32Array): void {
-    // TODO: Implement GPS station rendering
-    // For now, render Earth disk
-    this.renderEarth(vpMatrix);
-  }
-
   private updateUI(): void {
-    // Update FPS
     const fpsEl = document.getElementById('fps');
     if (fpsEl) fpsEl.textContent = this.fpsCounter.getFPS().toString();
 
-    // Update current time
     const timeEl = document.getElementById('currentTime');
     if (timeEl) timeEl.textContent = `${this.state.time.toFixed(2)} yr`;
 
-    // Update Earth radius (accounting for expansion)
     const radiusEl = document.getElementById('earthRadius');
     if (radiusEl) {
       const expandedRadius = this.expansion.getExpandedRadius(MODEL.geometry.ANTARCTIC_RIM_RADIUS, this.state.time);
       radiusEl.textContent = `${expandedRadius.toFixed(0)} km`;
     }
 
-    // Update day length
     const dayLengthEl = document.getElementById('dayLength');
     if (dayLengthEl) {
       const dayLength = this.expansion.getDayLength(this.state.time);
       dayLengthEl.textContent = `${dayLength.toFixed(3)} hr`;
     }
 
-    // Update sun position
     const sunPosEl = document.getElementById('sunPos');
     if (sunPosEl) {
       const timeInDays = this.state.time * 365.24;
@@ -491,13 +457,9 @@ class FlatEarthEngine {
     const deltaTime = currentTime - this.lastTime;
     this.lastTime = currentTime;
 
-    // Update simulation
     this.update(deltaTime);
-
-    // Render frame
     this.render();
 
-    // Continue animation loop
     this.animationFrame = requestAnimationFrame(() => this.animate());
   }
 
@@ -507,7 +469,7 @@ class FlatEarthEngine {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `flat-earth-engine-${Date.now()}.png`;
+        a.download = `flat-earth-${this.viewMode}-${Date.now()}.png`;
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -515,19 +477,18 @@ class FlatEarthEngine {
   }
 
   public dispose(): void {
-    // Cancel animation
     if (this.animationFrame) {
       cancelAnimationFrame(this.animationFrame);
     }
 
-    // Cleanup shaders
     this.shaders.dispose();
-
-    // TODO: Cleanup buffers and VAOs
+    this.earthRenderer?.dispose();
+    this.fieldRenderer?.dispose();
+    this.solarRenderer?.dispose();
+    this.gpsRenderer?.dispose();
   }
 }
 
-// Initialize application when DOM is ready
 window.addEventListener('DOMContentLoaded', () => {
   try {
     new FlatEarthEngine();
