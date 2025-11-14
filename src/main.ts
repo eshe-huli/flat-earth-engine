@@ -10,13 +10,15 @@ import { EarthRenderer } from './rendering/earth-renderer';
 import { EMFieldRenderer } from './rendering/field-renderer';
 import { SolarRenderer } from './rendering/solar-renderer';
 import { GPSRenderer } from './rendering/gps-renderer';
+import { ClimateRenderer } from './rendering/climate-renderer';
 import { ExpansionEngine } from './core/expansion';
 import { EMFieldSolver } from './core/em-field';
 import { SolarSimulator } from './core/solar';
 import { ClimateModel } from './core/climate';
 import { GPSSimulator } from './core/gps';
 import { MODEL } from './constants';
-import type { SimulationState, ViewMode } from './types';
+import type { SimulationState } from './types';
+import { ViewMode } from './types';
 
 class FlatEarthEngine {
   private canvas: HTMLCanvasElement;
@@ -31,6 +33,7 @@ class FlatEarthEngine {
   private fieldRenderer: EMFieldRenderer | null = null;
   private solarRenderer: SolarRenderer | null = null;
   private gpsRenderer: GPSRenderer | null = null;
+  private climateRenderer: ClimateRenderer | null = null;
 
   // Simulation modules
   private expansion: ExpansionEngine;
@@ -53,6 +56,7 @@ class FlatEarthEngine {
   private showStreamlines: boolean = false;
   private showSunPath: boolean = false;
   private showGPSVectors: boolean = false;
+  private showClimateEvents: boolean = false;
 
   // Animation
   private lastTime: number = 0;
@@ -145,6 +149,15 @@ class FlatEarthEngine {
       );
       console.log('✓ GPS renderer initialized');
 
+      this.climateRenderer = new ClimateRenderer(
+        gl,
+        this.shaders.getProgram('climate'),
+        this.shaders.getProgram('line'),
+        earthVAO!,
+        earthGeom.indices.length
+      );
+      console.log('✓ Climate renderer initialized');
+
       // Setup data
       this.gps.generateStations(1000);
       console.log('✓ Generated 1000 GPS stations');
@@ -156,6 +169,10 @@ class FlatEarthEngine {
       // Generate sun path
       this.solarRenderer.updateSunPath(this.solar, 0);
       console.log('✓ Generated sun path');
+
+      // Generate climate event markers
+      this.climateRenderer.generateEventMarkers(this.climate);
+      console.log('✓ Generated climate event markers');
 
       this.setupUI();
       this.setupEventListeners();
@@ -302,6 +319,7 @@ class FlatEarthEngine {
           this.showStreamlines = view === ViewMode.EM_FIELD;
           this.showSunPath = view === ViewMode.SOLAR;
           this.showGPSVectors = view === ViewMode.GPS;
+          this.showClimateEvents = view === ViewMode.CLIMATE;
         }
       });
     });
@@ -420,6 +438,20 @@ class FlatEarthEngine {
           }
         }
         break;
+
+      case ViewMode.CLIMATE:
+        if (this.climateRenderer) {
+          this.climateRenderer.renderOverlay(
+            this.camera,
+            this.state.time,
+            this.state.expansionRate,
+            this.climate
+          );
+          if (this.showClimateEvents) {
+            this.climateRenderer.renderEvents(this.camera);
+          }
+        }
+        break;
     }
 
     this.updateUI();
@@ -486,6 +518,7 @@ class FlatEarthEngine {
     this.fieldRenderer?.dispose();
     this.solarRenderer?.dispose();
     this.gpsRenderer?.dispose();
+    this.climateRenderer?.dispose();
   }
 }
 

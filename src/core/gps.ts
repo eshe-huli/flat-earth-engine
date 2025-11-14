@@ -5,7 +5,7 @@
 
 import type { GPSStation, PolarCoord, Vector2 } from '../types';
 import { MODEL } from '../constants';
-import { polarToCartesian, calculateGPSDisplacement } from './expansion';
+import { polarToCartesian } from './geometry';
 
 export class GPSSimulator {
   private stations: GPSStation[] = [];

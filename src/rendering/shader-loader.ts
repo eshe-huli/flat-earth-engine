@@ -14,6 +14,8 @@ import lineVertSource from '../shaders/line.vert.glsl?raw';
 import lineFragSource from '../shaders/line.frag.glsl?raw';
 import solarVertSource from '../shaders/solar.vert.glsl?raw';
 import solarFragSource from '../shaders/solar.frag.glsl?raw';
+import climateVertSource from '../shaders/climate.vert.glsl?raw';
+import climateFragSource from '../shaders/climate.frag.glsl?raw';
 
 export class ShaderManager {
   private gl: WebGL2RenderingContext;
@@ -41,6 +43,9 @@ export class ShaderManager {
 
       this.programs.set('solar', createShaderProgram(this.gl, solarVertSource, solarFragSource));
       console.log('✓ Solar shader loaded');
+
+      this.programs.set('climate', createShaderProgram(this.gl, climateVertSource, climateFragSource));
+      console.log('✓ Climate shader loaded');
 
       console.log('All shaders loaded successfully');
     } catch (error) {
