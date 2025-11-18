@@ -62,12 +62,55 @@ class FlatEarthEngine {
   private lastTime: number = 0;
   private animationFrame: number = 0;
 
+  // Recording state (reserved for future animation recording feature)
+  // private isRecording: boolean = false;
+  // private recordingFrames: string[] = [];
+
   // UI elements
   private uiElements: {
     controls: HTMLElement | null;
     infoPanel: HTMLElement | null;
     loading: HTMLElement | null;
   };
+
+  // Configuration presets
+  private presets: Map<string, Partial<SimulationState>> = new Map([
+    ['default', {
+      time: 0,
+      timeScale: 1.0,
+      expansionRate: MODEL.expansion.RATE,
+      fieldStrength: 1.0,
+      isPaused: false,
+    }],
+    ['rapid-expansion', {
+      time: 0,
+      timeScale: 1000,
+      expansionRate: 10.0,
+      fieldStrength: 1.0,
+      isPaused: false,
+    }],
+    ['weak-field', {
+      time: 0,
+      timeScale: 1.0,
+      expansionRate: MODEL.expansion.RATE,
+      fieldStrength: 0.3,
+      isPaused: false,
+    }],
+    ['future-2100', {
+      time: 76,
+      timeScale: 10,
+      expansionRate: MODEL.expansion.RATE,
+      fieldStrength: 1.0,
+      isPaused: true,
+    }],
+    ['extreme-warming', {
+      time: 200,
+      timeScale: 100,
+      expansionRate: 5.0,
+      fieldStrength: 1.2,
+      isPaused: false,
+    }],
+  ]);
 
   constructor() {
     this.canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -188,6 +231,10 @@ class FlatEarthEngine {
       }
 
       console.log('✅ Initialization complete');
+
+      // Load state from URL parameters or localStorage
+      this.loadStateFromURL();
+      this.loadStateFromStorage();
 
       this.lastTime = performance.now();
       this.animate();
@@ -445,6 +492,50 @@ class FlatEarthEngine {
     const exportClimate = document.getElementById('exportClimate');
     if (exportClimate) {
       exportClimate.addEventListener('click', () => this.exportClimateData());
+    }
+
+    // Enhanced screenshot
+    const enhancedScreenshot = document.getElementById('enhancedScreenshot');
+    if (enhancedScreenshot) {
+      enhancedScreenshot.addEventListener('click', () => this.takeEnhancedScreenshot());
+    }
+
+    // Save/Load state
+    const saveState = document.getElementById('saveState');
+    if (saveState) {
+      saveState.addEventListener('click', () => this.saveStateToStorage());
+    }
+
+    const loadState = document.getElementById('loadState');
+    if (loadState) {
+      loadState.addEventListener('click', () => {
+        this.loadStateFromStorage();
+        this.showNotification('State loaded from storage!');
+      });
+    }
+
+    // Share URL
+    const shareURL = document.getElementById('shareURL');
+    if (shareURL) {
+      shareURL.addEventListener('click', () => this.shareCurrentState());
+    }
+
+    // Presets
+    const presetSelect = document.getElementById('presetSelect') as HTMLSelectElement;
+    if (presetSelect) {
+      presetSelect.addEventListener('change', () => {
+        const preset = presetSelect.value;
+        if (preset) {
+          this.loadPreset(preset);
+          presetSelect.value = ''; // Reset to placeholder
+        }
+      });
+    }
+
+    // Export statistics
+    const exportStats = document.getElementById('exportStats');
+    if (exportStats) {
+      exportStats.addEventListener('click', () => this.exportStatistics());
     }
 
     console.log('✓ UI setup complete');
@@ -820,6 +911,315 @@ class FlatEarthEngine {
     URL.revokeObjectURL(url);
 
     console.log(`✓ Exported climate data (${climateData.length} samples) to CSV`);
+  }
+
+  /**
+   * Save current simulation state to localStorage
+   */
+  private saveStateToStorage(): void {
+    try {
+      const stateData = {
+        state: this.state,
+        viewMode: this.viewMode,
+        cameraState: this.camera.getState(),
+        timestamp: Date.now(),
+      };
+      localStorage.setItem('flat-earth-engine-state', JSON.stringify(stateData));
+      console.log('✓ State saved to localStorage');
+
+      // Show notification
+      this.showNotification('Simulation state saved!');
+    } catch (error) {
+      console.error('Failed to save state:', error);
+    }
+  }
+
+  /**
+   * Load simulation state from localStorage
+   */
+  private loadStateFromStorage(): void {
+    try {
+      const saved = localStorage.getItem('flat-earth-engine-state');
+      if (!saved) return;
+
+      const stateData = JSON.parse(saved);
+
+      // Check if saved state is not too old (7 days)
+      const age = Date.now() - stateData.timestamp;
+      if (age > 7 * 24 * 60 * 60 * 1000) {
+        console.log('Saved state too old, ignoring');
+        return;
+      }
+
+      // Apply saved state
+      Object.assign(this.state, stateData.state);
+      this.viewMode = stateData.viewMode || ViewMode.EARTH;
+
+      if (stateData.cameraState) {
+        this.camera.setState(stateData.cameraState);
+      }
+
+      this.updateUIFromState();
+      console.log('✓ State loaded from localStorage');
+    } catch (error) {
+      console.error('Failed to load state:', error);
+    }
+  }
+
+  /**
+   * Load simulation state from URL parameters
+   */
+  private loadStateFromURL(): void {
+    try {
+      const params = new URLSearchParams(window.location.search);
+
+      if (params.has('preset')) {
+        const presetName = params.get('preset') as string;
+        this.loadPreset(presetName);
+        return;
+      }
+
+      // Load individual parameters
+      if (params.has('time')) this.state.time = parseFloat(params.get('time')!);
+      if (params.has('timeScale')) this.state.timeScale = parseFloat(params.get('timeScale')!);
+      if (params.has('expansionRate')) this.state.expansionRate = parseFloat(params.get('expansionRate')!);
+      if (params.has('fieldStrength')) this.state.fieldStrength = parseFloat(params.get('fieldStrength')!);
+      if (params.has('view')) this.viewMode = params.get('view') as ViewMode;
+      if (params.has('paused')) this.state.isPaused = params.get('paused') === 'true';
+
+      this.updateUIFromState();
+      console.log('✓ State loaded from URL parameters');
+    } catch (error) {
+      console.error('Failed to load state from URL:', error);
+    }
+  }
+
+  /**
+   * Generate shareable URL with current state
+   */
+  private generateShareableURL(): string {
+    const params = new URLSearchParams();
+    params.set('time', this.state.time.toFixed(2));
+    params.set('timeScale', this.state.timeScale.toString());
+    params.set('expansionRate', this.state.expansionRate.toString());
+    params.set('fieldStrength', this.state.fieldStrength.toString());
+    params.set('view', this.viewMode);
+    params.set('paused', this.state.isPaused.toString());
+
+    const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    return url;
+  }
+
+  /**
+   * Copy shareable URL to clipboard
+   */
+  private async shareCurrentState(): Promise<void> {
+    try {
+      const url = this.generateShareableURL();
+      await navigator.clipboard.writeText(url);
+      console.log('✓ Shareable URL copied to clipboard:', url);
+      this.showNotification('Shareable link copied to clipboard!');
+    } catch (error) {
+      console.error('Failed to copy URL:', error);
+      this.showNotification('Failed to copy link', 'error');
+    }
+  }
+
+  /**
+   * Load a configuration preset
+   */
+  private loadPreset(presetName: string): void {
+    const preset = this.presets.get(presetName);
+    if (!preset) {
+      console.warn(`Preset "${presetName}" not found`);
+      return;
+    }
+
+    Object.assign(this.state, preset);
+
+    // Update simulation engines
+    this.expansion.setExpansionRate(this.state.expansionRate / 100);
+    this.gps.setExpansionRate(this.state.expansionRate / 100);
+    this.emField.setFieldStrength(MODEL.electromagnetic.VORTEX_STRENGTH_B0 * this.state.fieldStrength);
+
+    // Regenerate data
+    if (this.fieldRenderer) {
+      this.fieldRenderer.generateStreamlines(this.emField, 24);
+    }
+    if (this.solarRenderer) {
+      this.solarRenderer.updateSunPath(this.solar, this.state.time * 365.24);
+    }
+
+    this.updateUIFromState();
+    console.log(`✓ Loaded preset: ${presetName}`);
+    this.showNotification(`Preset loaded: ${presetName}`);
+  }
+
+  /**
+   * Update UI controls from current state
+   */
+  private updateUIFromState(): void {
+    const timeScaleSlider = document.getElementById('timeScale') as HTMLInputElement;
+    const expansionRateSlider = document.getElementById('expansionRate') as HTMLInputElement;
+    const fieldStrengthSlider = document.getElementById('fieldStrength') as HTMLInputElement;
+    const simTimeSlider = document.getElementById('simTime') as HTMLInputElement;
+    const playPauseBtn = document.getElementById('playPause');
+
+    if (timeScaleSlider) {
+      const logValue = Math.log10(this.state.timeScale);
+      timeScaleSlider.value = logValue.toString();
+      timeScaleSlider.dispatchEvent(new Event('input'));
+    }
+
+    if (expansionRateSlider) {
+      expansionRateSlider.value = this.state.expansionRate.toString();
+      expansionRateSlider.dispatchEvent(new Event('input'));
+    }
+
+    if (fieldStrengthSlider) {
+      fieldStrengthSlider.value = this.state.fieldStrength.toString();
+      fieldStrengthSlider.dispatchEvent(new Event('input'));
+    }
+
+    if (simTimeSlider) {
+      simTimeSlider.value = this.state.time.toString();
+      simTimeSlider.dispatchEvent(new Event('input'));
+    }
+
+    if (playPauseBtn) {
+      playPauseBtn.textContent = this.state.isPaused ? '▶ Play' : '⏸ Pause';
+    }
+
+    // Switch to correct view mode
+    const viewButton = document.querySelector(`[data-view="${this.viewMode}"]`);
+    if (viewButton) {
+      viewButton.dispatchEvent(new Event('click'));
+    }
+  }
+
+  /**
+   * Show notification to user
+   */
+  private showNotification(message: string, type: 'success' | 'error' = 'success'): void {
+    // Create notification element if it doesn't exist
+    let notification = document.getElementById('notification');
+    if (!notification) {
+      notification = document.createElement('div');
+      notification.id = 'notification';
+      notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 25px;
+        border-radius: 8px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        z-index: 10000;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+      `;
+      document.body.appendChild(notification);
+    }
+
+    // Set color based on type
+    notification.style.backgroundColor = type === 'success' ? 'rgba(76, 175, 80, 0.95)' : 'rgba(244, 67, 54, 0.95)';
+    notification.style.color = '#fff';
+    notification.textContent = message;
+
+    // Show notification
+    notification.style.opacity = '1';
+
+    // Hide after 3 seconds
+    setTimeout(() => {
+      notification!.style.opacity = '0';
+    }, 3000);
+  }
+
+  /**
+   * Take enhanced screenshot with metadata overlay
+   */
+  private takeEnhancedScreenshot(): void {
+    // Create a temporary canvas to add metadata overlay
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = this.canvas.width;
+    tempCanvas.height = this.canvas.height;
+    const ctx = tempCanvas.getContext('2d')!;
+
+    // Draw current canvas
+    ctx.drawImage(this.canvas, 0, 0);
+
+    // Add metadata overlay
+    const padding = 20;
+    const lineHeight = 24;
+    const fontSize = 18;
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(padding - 10, padding - 10, 400, 180);
+
+    ctx.fillStyle = '#e8eaf6';
+    ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
+    ctx.fillText('Flat Earth Engine', padding, padding + lineHeight);
+
+    ctx.font = `${fontSize - 2}px 'Segoe UI', sans-serif`;
+    ctx.fillText(`View: ${this.viewMode.charAt(0).toUpperCase() + this.viewMode.slice(1)}`, padding, padding + lineHeight * 2);
+    ctx.fillText(`Time: ${this.state.time.toFixed(2)} years`, padding, padding + lineHeight * 3);
+    ctx.fillText(`Expansion Rate: ${this.state.expansionRate.toFixed(1)} cm/yr`, padding, padding + lineHeight * 4);
+    ctx.fillText(`Field Strength: ${this.state.fieldStrength.toFixed(1)}x`, padding, padding + lineHeight * 5);
+
+    const date = new Date().toISOString().split('T')[0];
+    ctx.fillText(`Date: ${date}`, padding, padding + lineHeight * 6);
+
+    // Download image
+    tempCanvas.toBlob((blob) => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `flat-earth-${this.viewMode}-t${this.state.time.toFixed(0)}yr-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        this.showNotification('Screenshot saved with metadata!');
+      }
+    });
+  }
+
+  /**
+   * Get detailed statistics
+   */
+  private getDetailedStatistics(): string {
+    const stats = {
+      fps: this.fpsCounter.getFPS(),
+      time: this.state.time,
+      expandedRadius: this.expansion.getExpandedRadius(MODEL.geometry.ANTARCTIC_RIM_RADIUS, this.state.time),
+      dayLength: this.expansion.getDayLength(this.state.time),
+      gpsStations: this.gps.getStations().length,
+      viewMode: this.viewMode,
+      memoryMB: (performance as any).memory ? ((performance as any).memory.usedJSHeapSize / 1048576).toFixed(1) : 'N/A',
+      canvas: `${this.canvas.width}x${this.canvas.height}`,
+    };
+
+    return JSON.stringify(stats, null, 2);
+  }
+
+  /**
+   * Export detailed statistics
+   */
+  private exportStatistics(): void {
+    const stats = this.getDetailedStatistics();
+    const blob = new Blob([stats], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `flat-earth-stats-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    console.log('✓ Statistics exported');
+    this.showNotification('Statistics exported!');
   }
 
   public dispose(): void {
