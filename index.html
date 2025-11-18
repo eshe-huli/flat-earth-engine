@@ -333,6 +333,11 @@
         <button id="loadState">📂 Load State</button>
       </div>
 
+      <div class="control-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <button id="clearState">🗑️ Clear Saved</button>
+        <button id="toggleAutoSave">⏰ Auto-Save: ON</button>
+      </div>
+
       <div class="control-group">
         <button id="shareURL">🔗 Share URL</button>
       </div>
@@ -495,7 +500,10 @@
             <kbd>Arrow Keys</kbd><span>Pan camera view</span>
             <kbd>[ / ]</kbd><span>Zoom in / out</span>
             <kbd>S</kbd><span>Take screenshot</span>
-            <kbd>E</kbd><span>Export current data</span>
+            <kbd>E</kbd><span>Export current data (GPS/Climate)</span>
+            <kbd>P</kbd><span>Copy shareable URL to clipboard</span>
+            <kbd>C</kbd><span>Clear saved state from browser</span>
+            <kbd>A</kbd><span>Toggle auto-save (every 60s)</span>
           </div>
         </div>
 
@@ -512,11 +520,13 @@
           <h3 style="color: #5c6bc0; margin-bottom: 10px;">Advanced Features</h3>
           <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9rem;">
             <li style="margin-bottom: 6px;"><strong>💾 Save/Load State:</strong> Persist simulation state to browser localStorage</li>
-            <li style="margin-bottom: 6px;"><strong>🔗 Share URL:</strong> Generate shareable link with current parameters</li>
+            <li style="margin-bottom: 6px;"><strong>⏰ Auto-Save:</strong> Automatic state persistence every 60 seconds (toggle with A key)</li>
+            <li style="margin-bottom: 6px;"><strong>🗑️ Clear State:</strong> Remove saved state from browser storage</li>
+            <li style="margin-bottom: 6px;"><strong>🔗 Share URL:</strong> Generate shareable link with current parameters (press P)</li>
             <li style="margin-bottom: 6px;"><strong>⚙️ Presets:</strong> Quick scenarios (Rapid Expansion, Future 2100, etc.)</li>
             <li style="margin-bottom: 6px;"><strong>📸 Enhanced Screenshot:</strong> Screenshot with embedded metadata overlay</li>
             <li style="margin-bottom: 6px;"><strong>📊 Export Statistics:</strong> JSON export of current simulation metrics</li>
-            <li style="margin-bottom: 6px;"><strong>📁 Data Export:</strong> CSV export for GPS stations and climate data</li>
+            <li style="margin-bottom: 6px;"><strong>📁 Data Export:</strong> CSV export for GPS stations and climate data (press E)</li>
           </ul>
         </div>
 

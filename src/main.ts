@@ -66,6 +66,11 @@ class FlatEarthEngine {
   // private isRecording: boolean = false;
   // private recordingFrames: string[] = [];
 
+  // Auto-save settings
+  private autoSaveEnabled: boolean = true;
+  private autoSaveInterval: number = 60000; // 60 seconds
+  private lastAutoSave: number = 0;
+
   // UI elements
   private uiElements: {
     controls: HTMLElement | null;
@@ -514,6 +519,20 @@ class FlatEarthEngine {
       });
     }
 
+    const clearState = document.getElementById('clearState');
+    if (clearState) {
+      clearState.addEventListener('click', () => this.clearSavedState());
+    }
+
+    const toggleAutoSave = document.getElementById('toggleAutoSave');
+    if (toggleAutoSave) {
+      toggleAutoSave.addEventListener('click', () => {
+        this.toggleAutoSave();
+        // Update button text
+        toggleAutoSave.textContent = this.autoSaveEnabled ? '⏰ Auto-Save: ON' : '⏰ Auto-Save: OFF';
+      });
+    }
+
     // Share URL
     const shareURL = document.getElementById('shareURL');
     if (shareURL) {
@@ -689,6 +708,24 @@ class FlatEarthEngine {
             this.exportClimateData();
           }
           break;
+        case 'p': // Share/Copy shareable URL
+          e.preventDefault();
+          this.shareCurrentState();
+          break;
+        case 'c': // Clear saved state
+          if (e.ctrlKey || e.metaKey) return; // Don't interfere with browser copy
+          e.preventDefault();
+          this.clearSavedState();
+          break;
+        case 'a': // Toggle auto-save
+          if (e.ctrlKey || e.metaKey) return; // Don't interfere with browser select all
+          e.preventDefault();
+          this.toggleAutoSave();
+          const autoSaveBtn = document.getElementById('toggleAutoSave');
+          if (autoSaveBtn) {
+            autoSaveBtn.textContent = this.autoSaveEnabled ? '⏰ Auto-Save: ON' : '⏰ Auto-Save: OFF';
+          }
+          break;
       }
     });
 
@@ -716,6 +753,15 @@ class FlatEarthEngine {
       // Update GPS renderer every few frames
       if (Math.random() < 0.1 && this.gpsRenderer) {
         this.gpsRenderer.updateStations(this.gps);
+      }
+    }
+
+    // Auto-save periodically
+    if (this.autoSaveEnabled) {
+      const now = Date.now();
+      if (now - this.lastAutoSave > this.autoSaveInterval) {
+        this.saveStateToStorage(true); // Silent auto-save
+        this.lastAutoSave = now;
       }
     }
 
@@ -916,22 +962,51 @@ class FlatEarthEngine {
   /**
    * Save current simulation state to localStorage
    */
-  private saveStateToStorage(): void {
+  private saveStateToStorage(silent: boolean = false): void {
     try {
       const stateData = {
         state: this.state,
         viewMode: this.viewMode,
         cameraState: this.camera.getState(),
         timestamp: Date.now(),
+        version: '0.2.0', // Version tracking for future compatibility
       };
       localStorage.setItem('flat-earth-engine-state', JSON.stringify(stateData));
-      console.log('✓ State saved to localStorage');
 
-      // Show notification
-      this.showNotification('Simulation state saved!');
+      if (!silent) {
+        console.log('✓ State saved to localStorage');
+        this.showNotification('Simulation state saved!');
+      }
     } catch (error) {
       console.error('Failed to save state:', error);
+      if (!silent) {
+        this.showNotification('Failed to save state', 'error');
+      }
     }
+  }
+
+  /**
+   * Clear saved state from localStorage
+   */
+  private clearSavedState(): void {
+    try {
+      localStorage.removeItem('flat-earth-engine-state');
+      console.log('✓ Saved state cleared');
+      this.showNotification('Saved state cleared!');
+    } catch (error) {
+      console.error('Failed to clear state:', error);
+      this.showNotification('Failed to clear state', 'error');
+    }
+  }
+
+  /**
+   * Toggle auto-save feature
+   */
+  private toggleAutoSave(): void {
+    this.autoSaveEnabled = !this.autoSaveEnabled;
+    const status = this.autoSaveEnabled ? 'enabled' : 'disabled';
+    console.log(`✓ Auto-save ${status}`);
+    this.showNotification(`Auto-save ${status}`);
   }
 
   /**
