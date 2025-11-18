@@ -189,6 +189,81 @@
     .hidden {
       display: none;
     }
+
+    .legend-panel {
+      position: fixed;
+      top: 80px;
+      left: 20px;
+      background: rgba(13, 20, 51, 0.95);
+      border: 1px solid #5c6bc0;
+      border-radius: 8px;
+      padding: 15px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      min-width: 280px;
+      max-width: 320px;
+    }
+
+    .help-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(5px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .help-content {
+      background: rgba(13, 20, 51, 0.98);
+      border: 2px solid #5c6bc0;
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 700px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 16px 64px rgba(0, 0, 0, 0.5);
+    }
+
+    .help-content kbd {
+      background: rgba(92, 107, 192, 0.3);
+      border: 1px solid #5c6bc0;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: #5c6bc0;
+      display: inline-block;
+      min-width: 60px;
+      text-align: center;
+    }
+
+    .help-content h3 {
+      border-bottom: 1px solid rgba(92, 107, 192, 0.3);
+      padding-bottom: 8px;
+    }
+
+    .help-content::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .help-content::-webkit-scrollbar-track {
+      background: rgba(92, 107, 192, 0.1);
+      border-radius: 4px;
+    }
+
+    .help-content::-webkit-scrollbar-thumb {
+      background: rgba(92, 107, 192, 0.5);
+      border-radius: 4px;
+    }
+
+    .help-content::-webkit-scrollbar-thumb:hover {
+      background: rgba(92, 107, 192, 0.7);
+    }
   </style>
 </head>
 <body>
@@ -247,6 +322,56 @@
       <div class="control-group">
         <button id="screenshot">📷 Screenshot</button>
       </div>
+
+      <!-- Feature Toggles -->
+      <div class="control-group" id="featureToggles" style="display: none;">
+        <label style="margin-bottom: 10px; display: block; font-weight: bold;">Features</label>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="toggleStreamlines" style="margin-right: 8px;">
+            <span>EM Field Streamlines</span>
+          </label>
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="toggleSunPath" style="margin-right: 8px;">
+            <span>Sun Daily Path</span>
+          </label>
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="toggleGPSVectors" style="margin-right: 8px;">
+            <span>GPS Displacement Vectors</span>
+          </label>
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="toggleClimateEvents" style="margin-right: 8px;">
+            <span>Climate Event Markers</span>
+          </label>
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" id="toggleGrid" checked style="margin-right: 8px;">
+            <span>Earth Grid Lines</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Climate Mode Selector -->
+      <div class="control-group" id="climateMode" style="display: none;">
+        <label>Climate Visualization</label>
+        <select id="climateModeSelect" style="width: 100%; padding: 8px; background: rgba(92, 107, 192, 0.3); color: #e8eaf6; border: 1px solid #5c6bc0; border-radius: 4px; cursor: pointer;">
+          <option value="zones">Climate Zones</option>
+          <option value="anomaly">Temperature Anomaly</option>
+        </select>
+      </div>
+
+      <!-- Export Data -->
+      <div class="control-group">
+        <label style="margin-bottom: 8px; display: block;">Export Data</label>
+        <div style="display: flex; gap: 5px;">
+          <button id="exportGPS" style="flex: 1; padding: 8px; font-size: 0.8rem;">GPS CSV</button>
+          <button id="exportClimate" style="flex: 1; padding: 8px; font-size: 0.8rem;">Climate CSV</button>
+        </div>
+      </div>
+
+      <!-- Help Button -->
+      <div class="control-group">
+        <button id="helpButton">❓ Help & Shortcuts</button>
+      </div>
     </div>
 
     <div class="info-panel hidden" id="infoPanel">
@@ -269,6 +394,99 @@
       <div class="metric">
         <span class="label">Sun Position:</span>
         <span class="value" id="sunPos">r=0 km</span>
+      </div>
+      <div class="metric">
+        <span class="label">View Mode:</span>
+        <span class="value" id="currentView">Earth</span>
+      </div>
+      <div class="metric">
+        <span class="label">Memory:</span>
+        <span class="value" id="memory">-- MB</span>
+      </div>
+    </div>
+
+    <!-- Climate Legend -->
+    <div class="legend-panel hidden" id="legendPanel">
+      <h3 style="margin-bottom: 10px; font-size: 1rem; color: #5c6bc0;">Climate Zones</h3>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 20px; height: 20px; background: rgba(255, 77, 26, 0.65); border: 1px solid #fff;"></div>
+          <span>Heating (Arabia, +3°C/century)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 20px; height: 20px; background: rgba(26, 102, 255, 0.65); border: 1px solid #fff;"></div>
+          <span>Cooling (S. Africa, -1.5°C/century)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 20px; height: 20px; background: rgba(179, 217, 255, 0.7); border: 1px solid #fff;"></div>
+          <span>Subarctic (Antarctic rim, -3°C/century)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 20px; height: 20px; background: rgba(255, 255, 255, 0.8); border: 1px solid #5c6bc0;"></div>
+          <span>Polar (North Pole center)</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 20px; height: 20px; background: rgba(128, 204, 128, 0.4); border: 1px solid #fff;"></div>
+          <span>Stable (Equatorial, +1°C/century)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help Overlay -->
+    <div class="help-overlay hidden" id="helpOverlay">
+      <div class="help-content">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2 style="color: #5c6bc0; margin: 0;">Help & Keyboard Shortcuts</h2>
+          <button id="closeHelp" style="background: transparent; border: none; color: #e8eaf6; font-size: 1.5rem; cursor: pointer; padding: 0; width: 30px; height: 30px;">&times;</button>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: #5c6bc0; margin-bottom: 10px;">View Modes</h3>
+          <ul style="list-style: none; padding: 0; margin: 0;">
+            <li style="margin-bottom: 8px;"><strong>Earth:</strong> Flat disk with radial grid, expansion visualization</li>
+            <li style="margin-bottom: 8px;"><strong>EM Field:</strong> Toroidal electromagnetic field with streamlines (24 lines via RK4 integration)</li>
+            <li style="margin-bottom: 8px;"><strong>Solar:</strong> Local sun mechanics, daily path, illumination cone (30° angle)</li>
+            <li style="margin-bottom: 8px;"><strong>Climate:</strong> Climate zones, temperature anomaly heatmap, event markers</li>
+            <li style="margin-bottom: 8px;"><strong>GPS:</strong> 1000+ GPS stations with radial displacement vectors</li>
+          </ul>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: #5c6bc0; margin-bottom: 10px;">Keyboard Shortcuts</h3>
+          <div style="display: grid; grid-template-columns: auto 1fr; gap: 10px; font-size: 0.9rem;">
+            <kbd>1-5</kbd><span>Switch view modes (Earth, Field, Solar, Climate, GPS)</span>
+            <kbd>Space</kbd><span>Play / Pause simulation</span>
+            <kbd>R</kbd><span>Reset to initial state</span>
+            <kbd>H</kbd><span>Toggle help overlay</span>
+            <kbd>L</kbd><span>Toggle legend panel</span>
+            <kbd>G</kbd><span>Toggle grid lines</span>
+            <kbd>+/-</kbd><span>Increase / Decrease time scale</span>
+            <kbd>Arrow Keys</kbd><span>Pan camera view</span>
+            <kbd>[ / ]</kbd><span>Zoom in / out</span>
+            <kbd>S</kbd><span>Take screenshot</span>
+            <kbd>E</kbd><span>Export current data</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <h3 style="color: #5c6bc0; margin-bottom: 10px;">Mouse Controls</h3>
+          <ul style="list-style: none; padding: 0; margin: 0;">
+            <li style="margin-bottom: 8px;"><strong>Click + Drag:</strong> Pan camera</li>
+            <li style="margin-bottom: 8px;"><strong>Scroll Wheel:</strong> Zoom in/out</li>
+            <li style="margin-bottom: 8px;"><strong>View Tabs:</strong> Switch visualization modes</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 style="color: #5c6bc0; margin-bottom: 10px;">Model Parameters</h3>
+          <ul style="list-style: none; padding: 0; margin: 0; font-size: 0.9rem;">
+            <li style="margin-bottom: 6px;">• Expansion Rate: 3.3 cm/year (adjustable 0-10 cm/yr)</li>
+            <li style="margin-bottom: 6px;">• Earth Radius: 20,000 km (expanding)</li>
+            <li style="margin-bottom: 6px;">• EM Field: B(r,θ) = (B₀/r²)[cos(θ)r̂ + sin(θ)θ̂]</li>
+            <li style="margin-bottom: 6px;">• Sun Altitude: 5,000-10,000 km</li>
+            <li style="margin-bottom: 6px;">• Time Scale: 1× to 1,000,000× real-time</li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>

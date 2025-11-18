@@ -308,6 +308,10 @@ class FlatEarthEngine {
 
     // View mode tabs
     const viewTabs = document.querySelectorAll('.view-tabs button');
+    const featureToggles = document.getElementById('featureToggles');
+    const climateMode = document.getElementById('climateMode');
+    const legendPanel = document.getElementById('legendPanel');
+
     viewTabs.forEach(tab => {
       tab.addEventListener('click', () => {
         viewTabs.forEach(t => t.classList.remove('active'));
@@ -315,14 +319,133 @@ class FlatEarthEngine {
         const view = tab.getAttribute('data-view') as ViewMode;
         if (view) {
           this.viewMode = view;
-          // Update toggles based on view
-          this.showStreamlines = view === ViewMode.EM_FIELD;
-          this.showSunPath = view === ViewMode.SOLAR;
-          this.showGPSVectors = view === ViewMode.GPS;
-          this.showClimateEvents = view === ViewMode.CLIMATE;
+
+          // Update current view display
+          const currentViewEl = document.getElementById('currentView');
+          if (currentViewEl) {
+            currentViewEl.textContent = view.charAt(0).toUpperCase() + view.slice(1);
+          }
+
+          // Show/hide feature toggles based on view
+          if (featureToggles) {
+            featureToggles.style.display = view !== ViewMode.EARTH ? 'block' : 'none';
+          }
+
+          // Show/hide climate mode selector
+          if (climateMode) {
+            climateMode.style.display = view === ViewMode.CLIMATE ? 'block' : 'none';
+          }
+
+          // Show/hide legend for climate view
+          if (legendPanel) {
+            if (view === ViewMode.CLIMATE) {
+              legendPanel.classList.remove('hidden');
+            } else {
+              legendPanel.classList.add('hidden');
+            }
+          }
+
+          // Set default toggles for each view
+          const streamlinesCheckbox = document.getElementById('toggleStreamlines') as HTMLInputElement;
+          const sunPathCheckbox = document.getElementById('toggleSunPath') as HTMLInputElement;
+          const gpsVectorsCheckbox = document.getElementById('toggleGPSVectors') as HTMLInputElement;
+          const climateEventsCheckbox = document.getElementById('toggleClimateEvents') as HTMLInputElement;
+
+          if (streamlinesCheckbox) {
+            streamlinesCheckbox.checked = view === ViewMode.EM_FIELD;
+            streamlinesCheckbox.disabled = view !== ViewMode.EM_FIELD;
+            this.showStreamlines = view === ViewMode.EM_FIELD;
+          }
+          if (sunPathCheckbox) {
+            sunPathCheckbox.checked = view === ViewMode.SOLAR;
+            sunPathCheckbox.disabled = view !== ViewMode.SOLAR;
+            this.showSunPath = view === ViewMode.SOLAR;
+          }
+          if (gpsVectorsCheckbox) {
+            gpsVectorsCheckbox.checked = view === ViewMode.GPS;
+            gpsVectorsCheckbox.disabled = view !== ViewMode.GPS;
+            this.showGPSVectors = view === ViewMode.GPS;
+          }
+          if (climateEventsCheckbox) {
+            climateEventsCheckbox.checked = view === ViewMode.CLIMATE;
+            climateEventsCheckbox.disabled = view !== ViewMode.CLIMATE;
+            this.showClimateEvents = view === ViewMode.CLIMATE;
+          }
         }
       });
     });
+
+    // Feature toggles
+    const toggleStreamlines = document.getElementById('toggleStreamlines') as HTMLInputElement;
+    if (toggleStreamlines) {
+      toggleStreamlines.addEventListener('change', () => {
+        this.showStreamlines = toggleStreamlines.checked;
+      });
+    }
+
+    const toggleSunPath = document.getElementById('toggleSunPath') as HTMLInputElement;
+    if (toggleSunPath) {
+      toggleSunPath.addEventListener('change', () => {
+        this.showSunPath = toggleSunPath.checked;
+      });
+    }
+
+    const toggleGPSVectors = document.getElementById('toggleGPSVectors') as HTMLInputElement;
+    if (toggleGPSVectors) {
+      toggleGPSVectors.addEventListener('change', () => {
+        this.showGPSVectors = toggleGPSVectors.checked;
+      });
+    }
+
+    const toggleClimateEvents = document.getElementById('toggleClimateEvents') as HTMLInputElement;
+    if (toggleClimateEvents) {
+      toggleClimateEvents.addEventListener('change', () => {
+        this.showClimateEvents = toggleClimateEvents.checked;
+      });
+    }
+
+    // Climate mode selector
+    const climateModeSelect = document.getElementById('climateModeSelect') as HTMLSelectElement;
+    if (climateModeSelect && this.climateRenderer) {
+      climateModeSelect.addEventListener('change', () => {
+        const mode = climateModeSelect.value === 'zones' ? 0 : 1;
+        this.climateRenderer!.setVisualizationMode(mode);
+      });
+    }
+
+    // Help overlay
+    const helpButton = document.getElementById('helpButton');
+    const helpOverlay = document.getElementById('helpOverlay');
+    const closeHelp = document.getElementById('closeHelp');
+
+    if (helpButton && helpOverlay) {
+      helpButton.addEventListener('click', () => {
+        helpOverlay.classList.remove('hidden');
+      });
+    }
+
+    if (closeHelp && helpOverlay) {
+      closeHelp.addEventListener('click', () => {
+        helpOverlay.classList.add('hidden');
+      });
+
+      helpOverlay.addEventListener('click', (e) => {
+        if (e.target === helpOverlay) {
+          helpOverlay.classList.add('hidden');
+        }
+      });
+    }
+
+    // Export buttons
+    const exportGPS = document.getElementById('exportGPS');
+    if (exportGPS) {
+      exportGPS.addEventListener('click', () => this.exportGPSData());
+    }
+
+    const exportClimate = document.getElementById('exportClimate');
+    if (exportClimate) {
+      exportClimate.addEventListener('click', () => this.exportClimateData());
+    }
 
     console.log('✓ UI setup complete');
   }
@@ -364,6 +487,118 @@ class FlatEarthEngine {
       e.preventDefault();
       const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
       this.camera.zoomBy(zoomFactor);
+    });
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      // Ignore if typing in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
+        return;
+      }
+
+      switch (e.key.toLowerCase()) {
+        case '1': // Earth view
+          document.querySelector('[data-view="earth"]')?.dispatchEvent(new Event('click'));
+          break;
+        case '2': // EM Field view
+          document.querySelector('[data-view="field"]')?.dispatchEvent(new Event('click'));
+          break;
+        case '3': // Solar view
+          document.querySelector('[data-view="solar"]')?.dispatchEvent(new Event('click'));
+          break;
+        case '4': // Climate view
+          document.querySelector('[data-view="climate"]')?.dispatchEvent(new Event('click'));
+          break;
+        case '5': // GPS view
+          document.querySelector('[data-view="gps"]')?.dispatchEvent(new Event('click'));
+          break;
+        case ' ': // Space - Play/Pause
+          e.preventDefault();
+          this.state.isPaused = !this.state.isPaused;
+          const playPauseBtn = document.getElementById('playPause');
+          if (playPauseBtn) {
+            playPauseBtn.textContent = this.state.isPaused ? '▶ Play' : '⏸ Pause';
+          }
+          break;
+        case 'r': // Reset
+          document.getElementById('reset')?.click();
+          break;
+        case 'h': // Help overlay
+          const helpOverlay = document.getElementById('helpOverlay');
+          if (helpOverlay) {
+            helpOverlay.classList.toggle('hidden');
+          }
+          break;
+        case 'l': // Legend panel
+          const legendPanel = document.getElementById('legendPanel');
+          if (legendPanel) {
+            legendPanel.classList.toggle('hidden');
+          }
+          break;
+        case 'g': // Toggle grid
+          const toggleGrid = document.getElementById('toggleGrid') as HTMLInputElement;
+          if (toggleGrid) {
+            toggleGrid.checked = !toggleGrid.checked;
+            toggleGrid.dispatchEvent(new Event('change'));
+          }
+          break;
+        case '+':
+        case '=': // Increase time scale
+          e.preventDefault();
+          const timeScaleSlider = document.getElementById('timeScale') as HTMLInputElement;
+          if (timeScaleSlider) {
+            const newValue = Math.min(6, parseFloat(timeScaleSlider.value) + 0.5);
+            timeScaleSlider.value = newValue.toString();
+            timeScaleSlider.dispatchEvent(new Event('input'));
+          }
+          break;
+        case '-': // Decrease time scale
+          e.preventDefault();
+          const timeScaleSliderDec = document.getElementById('timeScale') as HTMLInputElement;
+          if (timeScaleSliderDec) {
+            const newValue = Math.max(0, parseFloat(timeScaleSliderDec.value) - 0.5);
+            timeScaleSliderDec.value = newValue.toString();
+            timeScaleSliderDec.dispatchEvent(new Event('input'));
+          }
+          break;
+        case 'arrowleft': // Pan left
+          e.preventDefault();
+          this.camera.pan(-0.1, 0);
+          break;
+        case 'arrowright': // Pan right
+          e.preventDefault();
+          this.camera.pan(0.1, 0);
+          break;
+        case 'arrowup': // Pan up
+          e.preventDefault();
+          this.camera.pan(0, -0.1);
+          break;
+        case 'arrowdown': // Pan down
+          e.preventDefault();
+          this.camera.pan(0, 0.1);
+          break;
+        case '[': // Zoom in
+          e.preventDefault();
+          this.camera.zoomBy(1.1);
+          break;
+        case ']': // Zoom out
+          e.preventDefault();
+          this.camera.zoomBy(0.9);
+          break;
+        case 's': // Screenshot
+          if (e.ctrlKey || e.metaKey) return; // Don't interfere with browser save
+          e.preventDefault();
+          this.takeScreenshot();
+          break;
+        case 'e': // Export
+          e.preventDefault();
+          if (this.viewMode === ViewMode.GPS) {
+            this.exportGPSData();
+          } else if (this.viewMode === ViewMode.CLIMATE) {
+            this.exportClimateData();
+          }
+          break;
+      }
     });
 
     console.log('✓ Event listeners setup complete');
@@ -482,6 +717,13 @@ class FlatEarthEngine {
       const sunPolar = this.solar.getSunPositionPolar(timeInDays);
       sunPosEl.textContent = `r=${sunPolar.r.toFixed(0)} km`;
     }
+
+    // Memory monitoring (if available)
+    const memoryEl = document.getElementById('memory');
+    if (memoryEl && (performance as any).memory) {
+      const memoryMB = (performance as any).memory.usedJSHeapSize / 1048576;
+      memoryEl.textContent = `${memoryMB.toFixed(1)} MB`;
+    }
   }
 
   private animate(): void {
@@ -506,6 +748,78 @@ class FlatEarthEngine {
         URL.revokeObjectURL(url);
       }
     });
+  }
+
+  private exportGPSData(): void {
+    const stations = this.gps.getStations();
+    if (!stations || stations.length === 0) {
+      console.warn('No GPS data to export');
+      return;
+    }
+
+    // Create CSV header
+    let csv = 'ID,Name,Latitude_Approx,Longitude_Approx,Radius_km,Theta_rad,Displacement_X_m,Displacement_Y_m,Velocity_X_m_yr,Velocity_Y_m_yr\n';
+
+    // Add data rows
+    stations.forEach(station => {
+      const lat = 90 - (station.position.r / MODEL.geometry.ANTARCTIC_RIM_RADIUS) * 90;
+      const lon = (station.position.theta * 180 / Math.PI) % 360;
+      const dispX = station.displacement?.x || 0;
+      const dispY = station.displacement?.y || 0;
+      const velX = station.velocity?.x || 0;
+      const velY = station.velocity?.y || 0;
+
+      csv += `${station.id},${station.name || 'GPS-' + station.id},${lat.toFixed(2)},${lon.toFixed(2)},${station.position.r.toFixed(2)},${station.position.theta.toFixed(4)},${dispX.toFixed(3)},${dispY.toFixed(3)},${velX.toFixed(3)},${velY.toFixed(3)}\n`;
+    });
+
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `gps-data-${this.state.time.toFixed(0)}yr-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    console.log(`✓ Exported ${stations.length} GPS stations to CSV`);
+  }
+
+  private exportClimateData(): void {
+    // Generate climate data for export
+    const climateData: any[] = [];
+    const radialSteps = 100;
+
+    for (let i = 0; i < radialSteps; i++) {
+      const r = (i / radialSteps) * MODEL.geometry.ANTARCTIC_RIM_RADIUS;
+      const zone = this.climate.getClimateZone(r);
+      const anomaly = this.climate.getTemperatureAnomaly(r, this.state.time);
+      const distToRim = this.climate.getDistanceToRim(r);
+
+      climateData.push({
+        radius_km: r,
+        zone: ['Polar', 'Subarctic', 'Temperate', 'Subtropical', 'Tropical', 'Heating', 'Cooling', 'Stable'][zone] || 'Unknown',
+        temperature_anomaly_C: anomaly,
+        distance_to_rim_km: distToRim,
+        latitude_approx: 90 - (r / MODEL.geometry.ANTARCTIC_RIM_RADIUS) * 90
+      });
+    }
+
+    // Create CSV
+    let csv = 'Radius_km,Zone,Temperature_Anomaly_C,Distance_To_Rim_km,Latitude_Approx\n';
+    climateData.forEach(row => {
+      csv += `${row.radius_km.toFixed(2)},${row.zone},${row.temperature_anomaly_C.toFixed(3)},${row.distance_to_rim_km.toFixed(2)},${row.latitude_approx.toFixed(2)}\n`;
+    });
+
+    // Download CSV
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `climate-data-${this.state.time.toFixed(0)}yr-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    console.log(`✓ Exported climate data (${climateData.length} samples) to CSV`);
   }
 
   public dispose(): void {
